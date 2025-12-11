@@ -7,7 +7,6 @@ import re
 # --- Configuration ---
 st.set_page_config(page_title="PIPE Elements Reviewer", layout="centered")
 
-
 # --- 1. Load Data (Cached for performance) ---
 @st.cache_data
 def load_data():
@@ -22,9 +21,7 @@ def load_data():
         st.error("Error: questions.json is corrupted.")
         return []
 
-
 # --- 2. Initialize Session State ---
-# This keeps track of data across button clicks (like pages in an app)
 if 'quiz_data' not in st.session_state:
     st.session_state.quiz_data = []
 if 'score' not in st.session_state:
@@ -37,25 +34,23 @@ if 'screen' not in st.session_state:
     st.session_state.screen = "home"
 if 'shuffled_options' not in st.session_state:
     st.session_state.shuffled_options = []
-
+# New state for the multiselect widget
+if 'selected_topics' not in st.session_state:
+    st.session_state.selected_topics = []
 
 # --- Helper: Sort Chapters ---
 def get_sorted_chapters(data):
     unique_chapters = set(q.get("chapter", "General") for q in data)
     try:
-        # Sort numerically if possible
-        return sorted(unique_chapters,
-                      key=lambda x: int(re.search(r'\d+', str(x)).group()) if re.search(r'\d+', str(x)) else str(x))
+        return sorted(unique_chapters, key=lambda x: int(re.search(r'\d+', str(x)).group()) if re.search(r'\d+', str(x)) else str(x))
     except:
         return sorted(list(unique_chapters), key=str)
-
 
 # --- SCREEN 1: HOME (Selection) ---
 def show_home(all_data):
     st.title("PIPE Elements Exam")
     st.write("### Select Chapter/s To Take (60 items)")
-
-    # Chapter Dictionary for pretty names
+    
     chapter_titles = {
         "1": "THERMODYNAMICS", "2": "FUELS & COMBUSTION", "3": "DIESEL POWER PLANT",
         "4": "GAS TURBINE", "5": "STEAM POWER PLANT", "6": "GEOTHERMAL & NON CONVENTIONAL",
@@ -66,10 +61,9 @@ def show_home(all_data):
         "19": "LATEST BOARD QUESTIONS"
     }
 
-    # Get available chapters
     chapters = get_sorted_chapters(all_data)
-
-    # Format options for the multiselect
+    
+    # Map label -> chapter_id
     options_map = {}
     for ch in chapters:
         num = str(ch)
@@ -77,65 +71,72 @@ def show_home(all_data):
         label = f"CHAPTER {num}: {name}" if name else f"Chapter {num}"
         options_map[label] = ch
 
-    # Multiselect widget
-    selected_labels = st.multiselect("Choose Topics:", list(options_map.keys()))
+    all_options = list(options_map.keys())
 
-    # Select All Button helper
-    if st.button("Select All Chapters"):
-        selected_labels = list(options_map.keys())
+    # --- "Select All" Logic ---
+    def select_all():
+        st.session_state.selected_topics = all_options
+
+    def clear_all():
+        st.session_state.selected_topics = []
+
+    col1, col2 = st.columns([1, 3])
+    with col1:
+        st.button("Select All Topics", on_click=select_all)
+    with col2:
+        st.button("Clear Selection", on_click=clear_all)
+
+    # Multiselect linked to session_state
+    selected_labels = st.multiselect(
+        "Choose Topics:", 
+        options=all_options, 
+        key="selected_topics"  # This links the widget to our session state variable
+    )
 
     if st.button("START EXAM", type="primary"):
         if not selected_labels:
             st.warning("Please select at least one chapter.")
         else:
-            # Filter Logic
             selected_ids = [options_map[label] for label in selected_labels]
             full_pool = [q for q in all_data if q.get("chapter", "General") in selected_ids]
-
-            # Shuffle and Limit
-            random.shuffle(full_pool)
-            st.session_state.quiz_data = full_pool[:60]
-
-            # Reset State
-            st.session_state.score = 0
-            st.session_state.current_index = 0
-            st.session_state.wrong_answers = []
-            st.session_state.screen = "quiz"
-            st.session_state.shuffled_options = []  # Reset options buffer
-            st.rerun()
-
+            
+            if not full_pool:
+                st.error("No questions found for the selected chapters.")
+            else:
+                random.shuffle(full_pool)
+                st.session_state.quiz_data = full_pool[:60]
+                
+                st.session_state.score = 0
+                st.session_state.current_index = 0
+                st.session_state.wrong_answers = []
+                st.session_state.shuffled_options = []
+                st.session_state.screen = "quiz"
+                st.rerun()
 
 # --- SCREEN 2: QUIZ ---
 def show_quiz():
     q_index = st.session_state.current_index
     total = len(st.session_state.quiz_data)
-
-    # Progress Bar
+    
     progress = (q_index / total)
     st.progress(progress)
     st.caption(f"Question {q_index + 1} of {total}")
 
-    # Get current question
     question_data = st.session_state.quiz_data[q_index]
-
-    # Logic to shuffle options ONLY ONCE per question
-    # We store the shuffled list in session_state so it doesn't reshuffle when you click buttons
+    
     if not st.session_state.shuffled_options:
         opts = question_data["options"].copy()
         random.shuffle(opts)
         st.session_state.shuffled_options = opts
 
     st.subheader(question_data["question"])
-
-    # Radio Button for Answer
-    # We use a unique key based on index to reset selection for next question
+    
     user_choice = st.radio("Choose your answer:", st.session_state.shuffled_options, index=None, key=f"q_{q_index}")
 
     if st.button("Next Question", type="primary"):
         if not user_choice:
             st.warning("Please select an answer.")
         else:
-            # Check Answer
             correct = question_data["answer"]
             if user_choice.strip().lower() == correct.strip().lower():
                 st.session_state.score += 1
@@ -145,37 +146,34 @@ def show_quiz():
                     "selected": user_choice,
                     "correct": correct
                 })
-
-            # Advance
+            
             st.session_state.current_index += 1
-            st.session_state.shuffled_options = []  # Clear options so next question shuffles new ones
-
-            # Check if finished
+            st.session_state.shuffled_options = []
+            
             if st.session_state.current_index >= total:
                 st.session_state.screen = "results"
-
+            
             st.rerun()
-
 
 # --- SCREEN 3: RESULTS ---
 def show_results():
     total = len(st.session_state.quiz_data)
     score = st.session_state.score
     percent = (score / total) * 100
-
+    
     st.title("Exam Results")
     st.markdown(f"### Final Score: {score} / {total} ({percent:.2f}%)")
-
+    
     if score == total:
+        st.balloons()
         st.success("Perfect Score! You got everything right!")
     else:
         st.write("---")
         st.subheader("Review of Incorrect Answers")
-
+        
         for i, item in enumerate(st.session_state.wrong_answers, 1):
             with st.container():
                 st.markdown(f"**{i}. {item['question']}**")
-                # Red for wrong, Green for correct using Streamlit markdown color syntax
                 st.markdown(f":red[**Your Answer:** {item['selected']}]")
                 st.markdown(f":green[**Correct Answer:** {item['correct']}]")
                 st.divider()
@@ -183,7 +181,6 @@ def show_results():
     if st.button("Take Another Quiz"):
         st.session_state.screen = "home"
         st.rerun()
-
 
 # --- MAIN APP LOGIC ---
 data = load_data()
