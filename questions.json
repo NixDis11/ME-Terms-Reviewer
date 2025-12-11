@@ -20517,7 +20517,8 @@
         "question": "From what principle that air ducts operate?",
         "options": [
             "principle of pressure difference",
-            "principle of temperature difference C.forced draft fan principle",
+            "principle of temperature difference", 
+            "forced draft fan principle",
             "principle of natural convection"
         ],
         "answer": "principle of pressure difference"
@@ -23464,4 +23465,5 @@
         ],
         "answer": "fluid friction"
     }
+
 ]
