@@ -74,7 +74,7 @@ def show_home(all_data):
     # --- CREATOR CREDIT ---
     st.markdown("""
         <div style='text-align: left; color: rgba(128, 128, 128, 0.5); font-size: 0.8em; margin-top: -15px; margin-bottom: 20px;'>
-            Created by: HVPR/NixDis
+            Created by: HVPReyes/NixDis
         </div>
     """, unsafe_allow_html=True)
     
@@ -200,3 +200,4 @@ elif st.session_state.screen == "quiz":
     show_quiz()
 elif st.session_state.screen == "results":
     show_results()
+
