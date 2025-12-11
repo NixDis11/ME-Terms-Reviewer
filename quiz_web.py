@@ -7,10 +7,9 @@ import re
 # --- Configuration ---
 st.set_page_config(page_title="PIPE Elements Reviewer", layout="centered")
 
-# --- 1. Load Data (Cached for performance) ---
+# --- 1. Load Data (Cached) ---
 @st.cache_data
 def load_data():
-    # Look for file in the same directory
     file_path = os.path.join(os.path.dirname(__file__), "questions.json")
     try:
         with open(file_path, 'r', encoding='utf-8') as f:
@@ -34,7 +33,6 @@ if 'screen' not in st.session_state:
     st.session_state.screen = "home"
 if 'shuffled_options' not in st.session_state:
     st.session_state.shuffled_options = []
-# New state for the multiselect widget
 if 'selected_topics' not in st.session_state:
     st.session_state.selected_topics = []
 
@@ -46,7 +44,35 @@ def get_sorted_chapters(data):
     except:
         return sorted(list(unique_chapters), key=str)
 
-# --- SCREEN 1: HOME (Selection) ---
+# --- Logic: Check Answer (The Magic Callback) ---
+def check_answer():
+    """This runs immediately when an option is clicked"""
+    q_index = st.session_state.current_index
+    quiz_data = st.session_state.quiz_data
+    
+    # Get the user's selection from the widget key
+    user_choice = st.session_state[f"q_{q_index}"]
+    correct = quiz_data[q_index]["answer"]
+    
+    # Score It
+    if user_choice.strip().lower() == correct.strip().lower():
+        st.session_state.score += 1
+    else:
+        st.session_state.wrong_answers.append({
+            "question": quiz_data[q_index]["question"],
+            "selected": user_choice,
+            "correct": correct
+        })
+    
+    # Advance to next question
+    st.session_state.current_index += 1
+    st.session_state.shuffled_options = [] # Reset options buffer
+    
+    # Check if finished
+    if st.session_state.current_index >= len(quiz_data):
+        st.session_state.screen = "results"
+
+# --- SCREEN 1: HOME ---
 def show_home(all_data):
     st.title("PIPE Elements Exam")
     st.write("### Select Chapter/s To Take (60 items)")
@@ -73,10 +99,8 @@ def show_home(all_data):
 
     all_options = list(options_map.keys())
 
-    # --- "Select All" Logic ---
     def select_all():
         st.session_state.selected_topics = all_options
-
     def clear_all():
         st.session_state.selected_topics = []
 
@@ -90,7 +114,7 @@ def show_home(all_data):
     selected_labels = st.multiselect(
         "Choose Topics:", 
         options=all_options, 
-        key="selected_topics"  # This links the widget to our session state variable
+        key="selected_topics"
     )
 
     if st.button("START EXAM", type="primary"):
@@ -106,6 +130,7 @@ def show_home(all_data):
                 random.shuffle(full_pool)
                 st.session_state.quiz_data = full_pool[:60]
                 
+                # Reset Quiz State
                 st.session_state.score = 0
                 st.session_state.current_index = 0
                 st.session_state.wrong_answers = []
@@ -124,6 +149,7 @@ def show_quiz():
 
     question_data = st.session_state.quiz_data[q_index]
     
+    # Logic to shuffle options ONLY ONCE per question
     if not st.session_state.shuffled_options:
         opts = question_data["options"].copy()
         random.shuffle(opts)
@@ -131,29 +157,15 @@ def show_quiz():
 
     st.subheader(question_data["question"])
     
-    user_choice = st.radio("Choose your answer:", st.session_state.shuffled_options, index=None, key=f"q_{q_index}")
-
-    if st.button("Next Question", type="primary"):
-        if not user_choice:
-            st.warning("Please select an answer.")
-        else:
-            correct = question_data["answer"]
-            if user_choice.strip().lower() == correct.strip().lower():
-                st.session_state.score += 1
-            else:
-                st.session_state.wrong_answers.append({
-                    "question": question_data["question"],
-                    "selected": user_choice,
-                    "correct": correct
-                })
-            
-            st.session_state.current_index += 1
-            st.session_state.shuffled_options = []
-            
-            if st.session_state.current_index >= total:
-                st.session_state.screen = "results"
-            
-            st.rerun()
+    # Radio Button with "on_change" callback
+    # This triggers check_answer() instantly when clicked
+    st.radio(
+        "Choose your answer:", 
+        st.session_state.shuffled_options, 
+        index=None,            # No default selection
+        key=f"q_{q_index}",    # Unique key for this question index
+        on_change=check_answer # This makes it advance automatically
+    )
 
 # --- SCREEN 3: RESULTS ---
 def show_results():
